@@ -85,6 +85,7 @@ def mobilenet_v1_base(inputs,
                       min_depth=8,
                       depth_multiplier=1.0,
                       output_stride=None,
+                      reuse=False,
                       scope=None):
   """Mobilenet v1.
   Constructs a Mobilenet v1 network from inputs to the given final endpoint.
@@ -117,7 +118,7 @@ def mobilenet_v1_base(inputs,
   if depth_multiplier <= 0:
     raise ValueError('depth_multiplier is not greater than zero.')
 
-  with tf.variable_scope(scope, 'MobilenetV1', [inputs]):
+  with tf.variable_scope(scope, 'MobilenetV1', [inputs], reuse=reuse):
     # The current_stride variable keeps track of the output stride of the
     # activations, i.e., the running product of convolution strides up to the
     # current network layer. This allows us to invoke atrous convolution
@@ -152,7 +153,7 @@ def mobilenet_v1_base(inputs,
 
       elif isinstance(conv_def, DepthSepConv):
         end_point = end_point_base + '_depthwise'
-
+        
         net = separable_conv2d_same(net, conv_def.kernel,
                                     stride=layer_stride,
                                     rate=layer_rate,
@@ -172,22 +173,20 @@ def mobilenet_v1_base(inputs,
 
 # Modified arg_scope to incorporate configs
 def mobilenet_v1_arg_scope(is_training=True,
-                           weight_decay=cfg.MOBILENET.WEIGHT_DECAY,
-                           stddev=0.09,
-                           regularize_depthwise=cfg.MOBILENET.REGU_DEPTH):
+                           stddev=0.09):
   batch_norm_params = {
-      'is_training': cfg.TRAIN.BN_TRAIN and is_training,
+      'is_training': False,
       'center': True,
       'scale': True,
       'decay': 0.9997,
       'epsilon': 0.001,
-      'trainable': cfg.TRAIN.BN_TRAIN,
+      'trainable': False,
   }
 
   # Set weight_decay for weights in Conv and DepthSepConv layers.
   weights_init = tf.truncated_normal_initializer(stddev=stddev)
-  regularizer = tf.contrib.layers.l2_regularizer(weight_decay)
-  if regularize_depthwise:
+  regularizer = tf.contrib.layers.l2_regularizer(cfg.MOBILENET.WEIGHT_DECAY)
+  if cfg.MOBILENET.REGU_DEPTH:
     depthwise_regularizer = regularizer
   else:
     depthwise_regularizer = None
@@ -205,38 +204,14 @@ def mobilenet_v1_arg_scope(is_training=True,
           return sc
 
 class mobilenetv1(Network):
-  def __init__(self, batch_size=1):
-    Network.__init__(self, batch_size=batch_size)
+  def __init__(self):
+    Network.__init__(self)
+    self._feat_stride = [16, ]
+    self._feat_compress = [1. / float(self._feat_stride[0]), ]
     self._depth_multiplier = cfg.MOBILENET.DEPTH_MULTIPLIER
     self._scope = 'MobilenetV1'
 
-  def _crop_pool_layer(self, bottom, rois, name):
-    with tf.variable_scope(name) as scope:
-      batch_ids = tf.squeeze(tf.slice(rois, [0, 0], [-1, 1], name="batch_id"), [1])
-      # Get the normalized coordinates of bounding boxes
-      bottom_shape = tf.shape(bottom)
-      height = (tf.to_float(bottom_shape[1]) - 1.) * np.float32(self._feat_stride[0])
-      width = (tf.to_float(bottom_shape[2]) - 1.) * np.float32(self._feat_stride[0])
-      x1 = tf.slice(rois, [0, 1], [-1, 1], name="x1") / width
-      y1 = tf.slice(rois, [0, 2], [-1, 1], name="y1") / height
-      x2 = tf.slice(rois, [0, 3], [-1, 1], name="x2") / width
-      y2 = tf.slice(rois, [0, 4], [-1, 1], name="y2") / height
-      # Won't be back-propagated to rois anyway, but to save time
-      bboxes = tf.stop_gradient(tf.concat([y1, x1, y2, x2], 1))
-      crops = tf.image.crop_and_resize(bottom, bboxes, tf.to_int32(batch_ids), 
-                                        [cfg.POOLING_SIZE, cfg.POOLING_SIZE],
-                                        name="crops")
-    return crops
-
-  def _build_network(self, sess, is_training=True):
-    # select initializers
-    if cfg.TRAIN.TRUNCATED:
-      initializer = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
-      initializer_bbox = tf.truncated_normal_initializer(mean=0.0, stddev=0.001)
-    else:
-      initializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
-      initializer_bbox = tf.random_normal_initializer(mean=0.0, stddev=0.001)
-
+  def _image_to_head(self, is_training, reuse=False):
     # Base bottleneck
     assert (0 <= cfg.MOBILENET.FIXED_LAYERS <= 12)
     net_conv = self._image
@@ -246,6 +221,7 @@ class mobilenetv1(Network):
                                       _CONV_DEFS[:cfg.MOBILENET.FIXED_LAYERS],
                                       starting_layer=0,
                                       depth_multiplier=self._depth_multiplier,
+                                      reuse=reuse,
                                       scope=self._scope)
     if cfg.MOBILENET.FIXED_LAYERS < 12:
       with slim.arg_scope(mobilenet_v1_arg_scope(is_training=is_training)):
@@ -253,11 +229,37 @@ class mobilenetv1(Network):
                                       _CONV_DEFS[cfg.MOBILENET.FIXED_LAYERS:12],
                                       starting_layer=cfg.MOBILENET.FIXED_LAYERS,
                                       depth_multiplier=self._depth_multiplier,
+                                      reuse=reuse,
                                       scope=self._scope)
-    
+
     self._act_summaries.append(net_conv)
     self._layers['head'] = net_conv
-    with tf.variable_scope(self._scope, 'MobilenetV1'):
+
+    return net_conv
+
+  def _head_to_tail(self, pool5, is_training, reuse=False):
+    with slim.arg_scope(mobilenet_v1_arg_scope(is_training=is_training)):
+      fc7 = mobilenet_v1_base(pool5,
+                              _CONV_DEFS[12:],
+                              starting_layer=12,
+                              depth_multiplier=self._depth_multiplier,
+                              reuse=reuse,
+                              scope=self._scope)
+      # average pooling done by reduce_mean
+      fc7 = tf.reduce_mean(fc7, axis=[1, 2])
+    return fc7
+
+  def _build_network(self, is_training=True):
+    # select initializers
+    if cfg.TRAIN.TRUNCATED:
+      initializer = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
+      initializer_bbox = tf.truncated_normal_initializer(mean=0.0, stddev=0.001)
+    else:
+      initializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
+      initializer_bbox = tf.random_normal_initializer(mean=0.0, stddev=0.001)
+    
+    net_conv = self._image_to_head(is_training)
+    with tf.variable_scope(self._scope, self._scope):
       # build the anchors for the image
       self._anchor_component()
       # region proposal network
@@ -268,16 +270,8 @@ class mobilenetv1(Network):
       else:
         raise NotImplementedError
 
-    with slim.arg_scope(mobilenet_v1_arg_scope(is_training=is_training)):
-      fc7 = mobilenet_v1_base(pool5,
-                              _CONV_DEFS[12:],
-                              starting_layer=12,
-                              depth_multiplier=self._depth_multiplier,
-                              scope=self._scope)
-
-    with tf.variable_scope(self._scope, 'MobilenetV1'):
-      # average pooling done by reduce_mean
-      fc7 = tf.reduce_mean(fc7, axis=[1, 2])
+    fc7 = self._head_to_tail(pool5, is_training)
+    with tf.variable_scope(self._scope, self._scope):
       # region classification
       cls_prob, bbox_pred = self._region_classification(fc7, is_training, 
                                                         initializer, initializer_bbox)

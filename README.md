@@ -16,11 +16,12 @@ With Resnet101 (last ``conv4``):
   - Train on VOC 2007+2012 trainval and test on VOC 2007 test (R-FCN schedule), **79.3**.
   - Train on COCO 2014 trainval35k and test on minival (900k/1190k), **34.1**.
 
-More Resnets:
+More Results:
+  - Train Mobilenet (1.0, 224) on COCO 2014 trainval35k and test on minival (900k/1190k), **21.9**.
   - Train Resnet50 on COCO 2014 trainval35k and test on minival (900k/1190k), **31.6**.
   - Train Resnet152 on COCO 2014 trainval35k and test on minival (900k/1190k), **35.2**.
 
-Approximate *baseline* [setup](https://github.com/endernewton/tf-faster-rcnn/blob/master/experiments/cfgs/res101-lg.yml) from [FPN](https://arxiv.org/abs/1612.03144):
+Approximate *baseline* [setup](https://github.com/endernewton/tf-faster-rcnn/blob/master/experiments/cfgs/res101-lg.yml) from [FPN](https://arxiv.org/abs/1612.03144) (this repo does not contain training code for FPN yet):
   - Train Resnet50 on COCO 2014 trainval35k and test on minival (900k/1190k), **33.4**.
   - Train Resnet101 on COCO 2014 trainval35k and test on minival (900k/1190k), **36.3**.
   - Train Resnet152 on COCO 2014 trainval35k and test on minival (1000k/1390k), **37.2**.

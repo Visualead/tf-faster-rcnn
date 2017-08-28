@@ -19,6 +19,6 @@ def nms(dets, thresh, force_cpu=True):
     return []
   if cfg.USE_GPU_NMS and not force_cpu:
     return True
-    #return gpu_nms(dets, thresh, device_id=cfg.GPU_ID)
+    #return gpu_nms(dets, thresh, device_id=0)
   else:
     return cpu_nms(dets, thresh)

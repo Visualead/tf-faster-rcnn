@@ -42,7 +42,7 @@ def parse_args():
                         help='tag of the model',
                         default='', type=str)
   parser.add_argument('--net', dest='net',
-                      help='vgg16, res50, res101, res152',
+                      help='vgg16, res50, res101, res152, mobile',
                       default='res50', type=str)
   parser.add_argument('--set', dest='set_cfgs',
                         help='set config keys', default=None,
@@ -70,7 +70,7 @@ if __name__ == '__main__':
   pprint.pprint(cfg)
 
   # if has model, get the name from it
-  # if does not, then just use the inialization weights
+  # if does not, then just use the initialization weights
   if args.model:
     filename = os.path.splitext(os.path.basename(args.model))[0]
   else:
@@ -90,20 +90,20 @@ if __name__ == '__main__':
   sess = tf.Session(config=tfconfig)
   # load network
   if args.net == 'vgg16':
-    net = vgg16(batch_size=1)
+    net = vgg16()
   elif args.net == 'res50':
-    net = resnetv1(batch_size=1, num_layers=50)
+    net = resnetv1(num_layers=50)
   elif args.net == 'res101':
-    net = resnetv1(batch_size=1, num_layers=101)
+    net = resnetv1(num_layers=101)
   elif args.net == 'res152':
-    net = resnetv1(batch_size=1, num_layers=152)
+    net = resnetv1(num_layers=152)
   elif args.net == 'mobile':
-    net = mobilenetv1(batch_size=1)
+    net = mobilenetv1()
   else:
     raise NotImplementedError
 
   # load model
-  net.create_architecture(sess, "TEST", imdb.num_classes, tag='default',
+  net.create_architecture("TEST", imdb.num_classes, tag='default',
                           anchor_scales=cfg.ANCHOR_SCALES,
                           anchor_ratios=cfg.ANCHOR_RATIOS)
 
