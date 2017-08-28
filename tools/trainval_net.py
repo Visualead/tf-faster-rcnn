@@ -46,7 +46,7 @@ def parse_args():
                       help='tag of the model',
                       default=None, type=str)
   parser.add_argument('--net', dest='net',
-                      help='vgg16, res50, res101, res152',
+                      help='vgg16, res50, res101, res152, mobile',
                       default='res50', type=str)
   parser.add_argument('--set', dest='set_cfgs',
                       help='set config keys', default=None,
@@ -122,15 +122,15 @@ if __name__ == '__main__':
 
   # load network
   if args.net == 'vgg16':
-    net = vgg16(batch_size=cfg.TRAIN.IMS_PER_BATCH)
+    net = vgg16()
   elif args.net == 'res50':
-    net = resnetv1(batch_size=cfg.TRAIN.IMS_PER_BATCH, num_layers=50)
+    net = resnetv1(num_layers=50)
   elif args.net == 'res101':
-    net = resnetv1(batch_size=cfg.TRAIN.IMS_PER_BATCH, num_layers=101)
+    net = resnetv1(num_layers=101)
   elif args.net == 'res152':
-    net = resnetv1(batch_size=cfg.TRAIN.IMS_PER_BATCH, num_layers=152)
+    net = resnetv1(num_layers=152)
   elif args.net == 'mobile':
-    net = mobilenetv1(batch_size=cfg.TRAIN.IMS_PER_BATCH)
+    net = mobilenetv1()
   else:
     raise NotImplementedError
     
