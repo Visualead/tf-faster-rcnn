@@ -17,11 +17,11 @@ import os
 import math
 
 from utils.timer import Timer
-from utils.cython_nms import nms
 from utils.blob import im_list_to_blob
 
 from model.config import cfg, get_output_dir
 from model.bbox_transform import clip_boxes, bbox_transform_inv
+from model.nms_wrapper import nms
 
 def _get_image_blob(im):
   """Converts an image into a network input.
@@ -124,7 +124,7 @@ def apply_nms(all_boxes, thresh):
       x2 = dets[:, 2]
       y2 = dets[:, 3]
       scores = dets[:, 4]
-      inds = np.where((x2 > x1) & (y2 > y1) & (scores > cfg.TEST.DET_THRESHOLD))[0]
+      inds = np.where((x2 > x1) & (y2 > y1))[0]
       dets = dets[inds,:]
       if dets == []:
         continue
@@ -135,7 +135,7 @@ def apply_nms(all_boxes, thresh):
       nms_boxes[cls_ind][im_ind] = dets[keep, :].copy()
   return nms_boxes
 
-def test_net(sess, net, imdb, weights_filename, max_per_image=100, thresh=0.05):
+def test_net(sess, net, imdb, weights_filename, max_per_image=100, thresh=0.):
   np.random.seed(cfg.RNG_SEED)
   """Test a Fast R-CNN network on an image database."""
   num_images = len(imdb.image_index)
