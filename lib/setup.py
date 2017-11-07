@@ -136,12 +136,6 @@ ext_modules = [
     #                                 "'-fPIC'"]},
     #    include_dirs = [numpy_include, CUDA['include']]
     #),
-    Extension(
-        "utils.cython_nms",
-        sources = ["utils/nms.pyx"],
-        extra_compile_args={'gcc': []},
-        include_dirs = [numpy_include],
-    ),
 ]
 
 setup(
